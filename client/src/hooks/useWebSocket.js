@@ -17,12 +17,15 @@ export const useWebSocket = () => {
       console.log('Attempting to connect to WebSocket server...');
       const newSocket = io('http://localhost:5000', {
         transports: ['polling', 'websocket'],
-        reconnectionAttempts: 10,
-        reconnectionDelay: 2000,
-        reconnectionDelayMax: 10000,
-        timeout: 30000,
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        timeout: 20000,
         forceNew: true,
-        autoConnect: true
+        autoConnect: true,
+        withCredentials: true,
+        path: '/socket.io'
       });
 
       newSocket.on('connect', () => {
@@ -38,10 +41,21 @@ export const useWebSocket = () => {
           toast.error(`Connection attempt ${retryCount}/${maxRetries}. Retrying...`);
           setTimeout(() => {
             newSocket.connect();
-          }, 2000);
+          }, 3000);
         } else {
-          toast.error('Unable to connect to Smart Home System. Please check if the server is running.');
+          toast.error('Unable to connect to Smart Home System. Please check if the server is running on port 5000.');
+          // Reset retry count after a longer delay and try again
+          setTimeout(() => {
+            retryCount = 0;
+            newSocket.connect();
+          }, 10000);
         }
+      });
+
+      // Add success handler
+      newSocket.on('connection_success', (data) => {
+        console.log('Server connection confirmed:', data);
+        retryCount = 0;
       });
 
       return newSocket;

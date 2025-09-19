@@ -2,194 +2,133 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
+const winston = require('winston');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const mongoose = require('mongoose');
+require('dotenv').config();
 
 // Import routes
 const authRoutes = require('./routes/auth');
 const deviceRoutes = require('./routes/devices');
-const roomRoutes = require('./routes/rooms');
-const scheduleRoutes = require('./routes/schedules');
-const waterRoutes = require('./routes/water');
-const solarRoutes = require('./routes/solar');
 
 // Import services
 const mqttService = require('./services/mqttService');
-const schedulerService = require('./services/schedulerService');
-const aiService = require('./services/aiService');
 
 // Import middleware
 const authMiddleware = require('./middleware/auth');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
-const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
-    methods: ["GET", "POST"],
-    credentials: true
-  }
-});
 
-// Basic CORS setup
+// Apply middleware
 app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:3000",
-  credentials: true
+  origin: 'http://localhost:5173',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Body parser
 app.use(express.json());
-
-// Routes
-app.use('/api/devices', deviceRoutes);
-
-// WebSocket connection handling
-io.on('connection', (socket) => {
-  console.log('New client connected');
-
-  socket.on('deviceControl', (data) => {
-    console.log('Device control:', data);
-    // Broadcast the update to all clients
-    io.emit('deviceStatusUpdate', data);
-  });
-
-  socket.on('disconnect', () => {
-    console.log('Client disconnected');
-  });
-});
-
-// Basic error handling
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).send('Something broke!');
-});
-
-// Start server
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
-
-// Logger setup
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'logs/combined.log' }),
-    new winston.transports.Console({
-      format: winston.format.simple()
-    })
-  ]
-});
-
-// Middleware
-app.use(helmet());
-app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:3000",
-  credentials: true
-}));
-
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
-});
-app.use(limiter);
-
-app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Make io accessible in routes
-app.use((req, res, next) => {
-  req.io = io;
-  next();
-});
+// Configure MongoDB
+mongoose.set('strictQuery', false);
 
-// Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/smarthome', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => logger.info('Connected to MongoDB'))
-.catch(err => logger.error('MongoDB connection error:', err));
-
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/devices', authMiddleware, deviceRoutes);
-app.use('/api/rooms', authMiddleware, roomRoutes);
-app.use('/api/schedules', authMiddleware, scheduleRoutes);
-app.use('/api/water', authMiddleware, waterRoutes);
-app.use('/api/solar', authMiddleware, solarRoutes);
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
-  });
-});
-
-// Socket.IO connection handling
-io.use(async (socket, next) => {
+// Initialize server
+const initializeServer = async () => {
   try {
-    const token = socket.handshake.auth.token;
-    // Verify JWT token here
-    next();
-  } catch (err) {
-    next(new Error('Authentication error'));
-  }
-});
+    // Skip MongoDB connection temporarily
+    console.log('Starting server without MongoDB...');
+    
+    // Create mock test user
+    const testUser = {
+      _id: '507f1f77bcf86cd799439011',
+      name: 'Test User',
+      email: 'test@example.com'
+    };
+    console.log('Using mock test user');
 
-io.on('connection', (socket) => {
-  logger.info(`Client connected: ${socket.id}`);
+    // Create mock test data
+    const mockRoom = {
+      _id: '507f1f77bcf86cd799439012',
+      name: 'Living Room',
+      type: 'living',
+      userId: testUser._id
+    };
 
-  socket.on('deviceControl', async (data) => {
-    const { deviceId, command, value } = data;
+    const mockDevice = {
+      _id: '507f1f77bcf86cd799439013',
+      name: 'Test Light',
+      type: 'light',
+      brand: 'Test Brand',
+      model: 'Test Model',
+      status: false,
+      userId: testUser._id,
+      roomId: mockRoom._id
+    };
 
-    try {
-      // Update device in database
-      // Send MQTT command to actual device
-      // Broadcast update to all clients
+    console.log('Mock data created');
 
-      io.emit('deviceStatusUpdate', {
-        deviceId,
-        status: value,
-        timestamp: new Date().toISOString()
+    // Mount routes with user middleware
+    app.use('/api/devices', async (req, res, next) => {
+      try {
+        // Add test user to request
+        req.user = testUser;
+        next();
+      } catch (error) {
+        console.error('Middleware error:', error);
+        res.status(500).json({
+          success: false,
+          message: error.message || 'Internal server error'
+        });
+      }
+    }, deviceRoutes);
+
+    app.use('/api/auth', authRoutes);
+
+    // Create HTTP server
+    const server = http.createServer(app);
+
+    // Configure Socket.IO
+    const io = socketIo(server, {
+      cors: {
+        origin: 'http://localhost:5173',
+        methods: ['GET', 'POST'],
+        credentials: true
+      }
+    });
+
+    // Socket.IO connection handling
+    io.on('connection', (socket) => {
+      console.log('New client connected:', socket.id);
+      socket.emit('connection_success', { message: 'Successfully connected to server' });
+
+      socket.on('disconnect', () => {
+        console.log('Client disconnected:', socket.id);
       });
+    });
 
-      logger.info(`Device control: ${deviceId} -> ${command}: ${value}`);
-    } catch (error) {
-      logger.error('Device control error:', error);
-      socket.emit('deviceControlError', { deviceId, error: error.message });
-    }
-  });
+    // Initialize MQTT service
+    mqttService.connect();
 
-  socket.on('activateScene', async (data) => {
-    const { sceneId } = data;
-    // Implement scene activation logic
-    logger.info(`Scene activated: ${sceneId}`);
-  });
+    // Error handling middleware
+    app.use(errorHandler);
 
-  socket.on('disconnect', () => {
-    logger.info(`Client disconnected: ${socket.id}`);
-  });
+    // Start server
+    const PORT = process.env.PORT || 5000;
+    server.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+
+  } catch (error) {
+    console.error('Server initialization error:', error);
+    process.exit(1);
+  }
+};
+
+// Start the server
+initializeServer().catch(error => {
+  console.error('Failed to start server:', error);
+  process.exit(1);
 });
-
-// Initialize services
-mqttService.connect();
-schedulerService.start();
-aiService.initialize();
-
-// Error handling
-app.use(errorHandler);
-
-// Start server
-server.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT}`);
-});
-
-module.exports = { app, server, io };

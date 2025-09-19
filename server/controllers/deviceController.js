@@ -1,17 +1,37 @@
-const Device = require('../models/Device');
-const Room = require('../models/Room');
 const logger = require('../utils/logger');
 const mqttService = require('../services/mqttService');
+
+// Mock data
+const mockRoom = {
+  _id: '507f1f77bcf86cd799439012',
+  name: 'Living Room',
+  type: 'living'
+};
+
+const mockDevice = {
+  _id: '507f1f77bcf86cd799439013',
+  name: 'Test Light',
+  type: 'light',
+  brand: 'Test Brand',
+  model: 'Test Model',
+  status: false,
+  roomId: {
+    _id: mockRoom._id,
+    name: mockRoom.name
+  }
+};
 
 const deviceController = {
   // Get all devices for a user
   getAllDevices: async (req, res) => {
     try {
-      const devices = await Device.find({ userId: req.user.id })
-        .populate('roomId', 'name')
-        .sort({ name: 1 });
+      console.log('Returning mock devices and rooms...');
+      
+      const devices = [mockDevice];
+      const rooms = [mockRoom];
 
-      const rooms = await Room.find({ userId: req.user.id });
+      console.log('Mock devices:', devices.length);
+      console.log('Mock rooms:', rooms.length);
 
       res.json({
         success: true,
@@ -32,10 +52,8 @@ const deviceController = {
   // Get single device
   getDevice: async (req, res) => {
     try {
-      const device = await Device.findOne({
-        _id: req.params.id,
-        userId: req.user.id
-      }).populate('roomId', 'name');
+      // Return mock device if ID matches
+      const device = req.params.id === mockDevice._id ? mockDevice : null;
 
       if (!device) {
         return res.status(404).json({

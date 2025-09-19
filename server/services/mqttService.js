@@ -8,42 +8,9 @@ class MQTTService {
   }
 
   connect() {
-    const brokerUrl = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
-
-    try {
-      this.client = mqtt.connect(brokerUrl, {
-        username: process.env.MQTT_USERNAME,
-        password: process.env.MQTT_PASSWORD,
-        keepalive: 60,
-        reconnectPeriod: 1000,
-      });
-
-      this.client.on('connect', () => {
-        this.connected = true;
-        logger.info('Connected to MQTT broker');
-
-        // Subscribe to device status topics
-        this.client.subscribe('smarthome/+/status');
-        this.client.subscribe('smarthome/+/sensor/+');
-      });
-
-      this.client.on('message', (topic, message) => {
-        this.handleMessage(topic, message.toString());
-      });
-
-      this.client.on('error', (error) => {
-        logger.error('MQTT connection error:', error);
-        this.connected = false;
-      });
-
-      this.client.on('close', () => {
-        this.connected = false;
-        logger.warn('MQTT connection closed');
-      });
-
-    } catch (error) {
-      logger.error('Failed to connect to MQTT broker:', error);
-    }
+    // Mock MQTT connection
+    logger.info('Using mock MQTT broker');
+    this.connected = true;
   }
 
   handleMessage(topic, message) {
@@ -92,30 +59,16 @@ class MQTTService {
   }
 
   publishDeviceCommand(device, command) {
-    if (!this.connected) {
-      logger.error('MQTT not connected, cannot send command');
-      return;
-    }
-
-    const topic = `smarthome/${device._id}/command`;
+    // Mock command publishing
     const payload = JSON.stringify({
       command: command,
       timestamp: new Date().toISOString()
     });
-
-    this.client.publish(topic, payload, (error) => {
-      if (error) {
-        logger.error('Failed to publish MQTT command:', error);
-      } else {
-        logger.info(`MQTT command sent to ${device.name}: ${payload}`);
-      }
-    });
+    logger.info(`Mock MQTT command sent to ${device.name}: ${payload}`);
   }
 
   publishDeviceDiscovery(device) {
-    if (!this.connected) return;
-
-    const topic = `homeassistant/${device.type}/${device._id}/config`;
+    // Mock device discovery
     const config = {
       name: device.name,
       unique_id: device._id,
@@ -123,14 +76,12 @@ class MQTTService {
       state_topic: `smarthome/${device._id}/status`,
       command_topic: `smarthome/${device._id}/command`
     };
-
-    this.client.publish(topic, JSON.stringify(config));
+    logger.info(`Mock device discovery published for ${device.name}`);
   }
 
   publishDeviceRemoval(device) {
-    if (!this.connected) return;
-
-    const topic = `homeassistant/${device.type}/${device._id}/config`;
+    // Mock device removal
+    logger.info(`Mock device removal published for ${device.name}`);
     this.client.publish(topic, '', { retain: true });
   }
 
